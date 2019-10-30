@@ -40,7 +40,7 @@ __global__ void kernelD(int n, float *x, float *y) {
 }
 
 int main(int argc, char *argv[]) {
-  uint64_t size;
+  int size;
   if (argc == 2) {
     cout << "\nArray size: " << argv[1] << endl;
     size = atoi(argv[1]);
@@ -49,24 +49,32 @@ int main(int argc, char *argv[]) {
     cout << "\nUsing default matrix size: " << size << endl;
   }
 
+  const int nStreams = 4;
+
   // declare host data
-  float *A_h;
-  float *B_h;
-  float *C_h;
-  cudaMallocHost(reinterpret_cast<void **>(&A_h), size * sizeof(float));
-  cudaMallocHost(reinterpret_cast<void **>(&B_h), size * sizeof(float));
-  cudaMallocHost(reinterpret_cast<void **>(&C_h), size * sizeof(float));
+  float *A_h[nStreams];
+  float *B_h[nStreams];
+  float *C_h[nStreams];
+
+  for (int i = 0; i < nStreams; i++) {
+    cudaMallocHost(reinterpret_cast<void **>(&A_h[i]), size * sizeof(float));
+    cudaMallocHost(reinterpret_cast<void **>(&B_h[i]), size * sizeof(float));
+    cudaMallocHost(reinterpret_cast<void **>(&C_h[i]), size * sizeof(float));
+  }
 
   // declare device data
-  float *A_d;
-  float *B_d;
-  float *C_d;
-  cudaMalloc(reinterpret_cast<void **>(&A_d), size * sizeof(float));
-  cudaMalloc(reinterpret_cast<void **>(&B_d), size * sizeof(float));
-  cudaMalloc(reinterpret_cast<void **>(&C_d), size * sizeof(float));
+  float *A_d[nStreams];
+  float *B_d[nStreams];
+  float *C_d[nStreams];
+  for (int i = 0; i < nStreams; i++) {
+    cudaMalloc(reinterpret_cast<void **>(&A_d[i]), size * sizeof(float));
+    cudaMalloc(reinterpret_cast<void **>(&B_d[i]), size * sizeof(float));
+    cudaMalloc(reinterpret_cast<void **>(&C_d[i]), size * sizeof(float));
+  }
 
   // initialize host data
-  init(size, A_h, B_h, C_h);
+  for (int i = 0; i < nStreams; i++)
+    init(size, A_h[i], B_h[i], C_h[i]);
 
   // create CUDA events for timing measurement
   cudaEvent_t start, stop;
@@ -75,58 +83,41 @@ int main(int argc, char *argv[]) {
 
   // dim3 gridDim;
   // dim3 blockDim;
-  const uint64_t gridDim = 1024;
-  const uint64_t blockDim = 64u;
+  const int gridDim = 1024;
+  const int blockDim = 64;
 
-  const int nStreams = 4;
   cudaStream_t stream[nStreams];
 
   for (size_t i = 0; i < nStreams; i++)
     cudaStreamCreate(&stream[i]);
   
-  cudaMemcpy(reinterpret_cast<void *>(A_d), reinterpret_cast<void *>(A_h), size,
-             cudaMemcpyHostToDevice);
-  cudaMemcpy(reinterpret_cast<void *>(B_d), reinterpret_cast<void *>(B_h), size,
-             cudaMemcpyHostToDevice);
-  cudaMemcpy(reinterpret_cast<void *>(C_d), reinterpret_cast<void *>(C_h), size,
-             cudaMemcpyHostToDevice);
-
   cudaEventRecord(start);
 
   for (size_t i = 0; i < 1000; i++) {
     int idStream = i % nStreams;
     // copy host data to device
-    cudaMemcpyAsync(reinterpret_cast<void *>(A_d), reinterpret_cast<void *>(A_h), 1024,
+    cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
                cudaMemcpyHostToDevice, stream[idStream]);
-    cudaMemcpyAsync(reinterpret_cast<void *>(B_d), reinterpret_cast<void *>(B_h), 1024,
+    cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
+               cudaMemcpyHostToDevice, stream[idStream]);
+    kernelA<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d[idStream], B_d[idStream]);
+
+    cudaMemcpyAsync(reinterpret_cast<void *>(C_d[idStream]), reinterpret_cast<void *>(C_h[idStream]), size,
+               cudaMemcpyHostToDevice, stream[idStream]);
+    kernelB<<<gridDim, blockDim, 0, stream[idStream]>>>(size, B_d[idStream], C_d[idStream]);
+
+    kernelC<<<gridDim, blockDim, 0, stream[idStream]>>>(size, C_d[idStream], A_d[idStream]);
+    cudaMemcpyAsync(reinterpret_cast<void *>(C_d[idStream]), reinterpret_cast<void *>(C_h[idStream]), size,
                cudaMemcpyHostToDevice, stream[idStream]);
 
-    kernelA<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d, B_d);
-    cudaMemcpyAsync(reinterpret_cast<void *>(C_d), reinterpret_cast<void *>(C_h), 512,
+    kernelD<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d[idStream], B_d[idStream]);
+    cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
                cudaMemcpyHostToDevice, stream[idStream]);
-
-    kernelB<<<gridDim, blockDim, 0, stream[idStream]>>>(size, B_d, C_d);
-    cudaMemcpyAsync(reinterpret_cast<void *>(B_d), reinterpret_cast<void *>(B_h), 1024,
-               cudaMemcpyHostToDevice, stream[idStream]);
-    cudaMemcpyAsync(reinterpret_cast<void *>(C_d), reinterpret_cast<void *>(C_h), 512,
-               cudaMemcpyHostToDevice, stream[idStream]);
-
-    kernelC<<<gridDim, blockDim, 0, stream[idStream]>>>(size, C_d, A_d);
-    cudaMemcpyAsync(reinterpret_cast<void *>(C_d), reinterpret_cast<void *>(C_h), 512,
-               cudaMemcpyHostToDevice, stream[idStream]);
-    kernelD<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d, B_d);
-    cudaMemcpyAsync(reinterpret_cast<void *>(A_d), reinterpret_cast<void *>(A_h), 1024,
+    cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
                cudaMemcpyHostToDevice, stream[idStream]);
   }
 
   cudaEventRecord(stop);
-
-  cudaMemcpy(reinterpret_cast<void *>(A_h), reinterpret_cast<void *>(A_d), size,
-             cudaMemcpyDeviceToHost);
-  cudaMemcpy(reinterpret_cast<void *>(C_h), reinterpret_cast<void *>(C_d), size,
-             cudaMemcpyDeviceToHost);
-  cudaMemcpy(reinterpret_cast<void *>(B_h), reinterpret_cast<void *>(B_d), size,
-             cudaMemcpyDeviceToHost);
 
   // print kernel runtime
   cudaEventSynchronize(stop);
@@ -135,16 +126,18 @@ int main(int argc, char *argv[]) {
   double seconds = static_cast<double>(milliseconds) / 1000.;
   cout << "runtime: " << seconds << endl;
   
-  for (size_t i = 0; i < 4; i++)
+  for (size_t i = 0; i < nStreams; i++)
     cudaStreamDestroy(stream[i]);
 
   // free the allocated memory
-  cudaFreeHost(A_h);
-  cudaFreeHost(B_h);
-  cudaFreeHost(C_h);
-  cudaFree(reinterpret_cast<void *>(A_d));
-  cudaFree(reinterpret_cast<void *>(B_d));
-  cudaFree(reinterpret_cast<void *>(C_d));
+  for (size_t i = 0; i < nStreams; i++) {
+    cudaFreeHost(A_h[i]);
+    cudaFreeHost(B_h[i]);
+    cudaFreeHost(C_h[i]);
+    cudaFree(reinterpret_cast<void *>(A_d[i]));
+    cudaFree(reinterpret_cast<void *>(B_d[i]));
+    cudaFree(reinterpret_cast<void *>(C_d[i]));
+  }
 
   return 0;
 }
