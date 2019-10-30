@@ -3,6 +3,8 @@
 
 using namespace std;
 
+const int CONST = 128;
+
 void init(uint64_t size, float *A, float *B, float *C) {
   for (size_t i = 0; i < size; i++) {
     A[i] = static_cast<float>(rand() % 100);
@@ -16,11 +18,11 @@ __global__ void kernelA(int n, float *x, float *y) {
   int stride = blockDim.x * gridDim.x;
   for (int i = index; i < n; i += stride) {
     if (x[i] > y[i]) {
-      for (int j = 0; j < n/128; j++)
+      for (int j = 0; j < n/CONST; j++)
         y[i] = x[j] + y[j];
     }
     else {
-      for (int j = 0; j < n/128; j++)
+      for (int j = 0; j < n/CONST; j++)
         y[i] = x[j] / y[j];
     }
   }
@@ -31,7 +33,7 @@ __global__ void kernelB(int n, float *x, float *y) {
   int stride = blockDim.x * gridDim.x;
   for (int i = index; i < n; i += stride) {
     if (x[i] > y[i]) {
-      for (int j = 0; j < n/128; j++)
+      for (int j = 0; j < n/CONST; j++)
         y[i] = x[j] + y[j];
     }
     else {
@@ -45,7 +47,7 @@ __global__ void kernelC(int n, float *x, float *y) {
   int stride = blockDim.x * gridDim.x;
   for (int i = index; i < n; i += stride)
     if (x[i] > y[i]) {
-      for (int j = 0; j < n/128; j++)
+      for (int j = 0; j < n/CONST; j++)
         y[i] = x[j] + y[j];
     }
 }
@@ -54,7 +56,7 @@ __global__ void kernelD(int n, float *x, float *y) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
   for (int i = index; i < n; i += stride) {
-    for (int j = 0; j < n/128; j++)
+    for (int j = 0; j < n/CONST; j++)
       y[i] = atomicAdd(&y[j], x[j]);
   }
 }
@@ -70,6 +72,10 @@ int main(int argc, char *argv[]) {
   }
 
   const int nStreams = 4;
+
+  bool graphCreated=false;
+  cudaGraph_t graph;
+  cudaGraphExec_t instance;
 
   // declare host data
   float *A_h[nStreams];
@@ -115,26 +121,34 @@ int main(int argc, char *argv[]) {
 
   for (size_t i = 0; i < 1000; i++) {
     int idStream = i % nStreams;
-    // copy host data to device
-    cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
-               cudaMemcpyHostToDevice, stream[idStream]);
-    cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
-               cudaMemcpyHostToDevice, stream[idStream]);
-    kernelA<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d[idStream], B_d[idStream]);
 
-    cudaMemcpyAsync(reinterpret_cast<void *>(C_d[idStream]), reinterpret_cast<void *>(C_h[idStream]), size,
-               cudaMemcpyHostToDevice, stream[idStream]);
-    kernelB<<<gridDim, blockDim, 0, stream[idStream]>>>(size, B_d[idStream], C_d[idStream]);
+    if(!graphCreated){
+      cudaStreamBeginCapture(stream[idStream], cudaStreamCaptureModeGlobal);
+      // copy host data to device
+      cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
+                 cudaMemcpyHostToDevice, stream[idStream]);
+      cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
+                 cudaMemcpyHostToDevice, stream[idStream]);
+      kernelA<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d[idStream], B_d[idStream]);
 
-    kernelC<<<gridDim, blockDim, 0, stream[idStream]>>>(size, C_d[idStream], A_d[idStream]);
-    cudaMemcpyAsync(reinterpret_cast<void *>(C_d[idStream]), reinterpret_cast<void *>(C_h[idStream]), size,
-               cudaMemcpyHostToDevice, stream[idStream]);
+      cudaMemcpyAsync(reinterpret_cast<void *>(C_d[idStream]), reinterpret_cast<void *>(C_h[idStream]), size,
+                 cudaMemcpyHostToDevice, stream[idStream]);
+      kernelB<<<gridDim, blockDim, 0, stream[idStream]>>>(size, B_d[idStream], C_d[idStream]);
 
-    kernelD<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d[idStream], B_d[idStream]);
-    cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
-               cudaMemcpyHostToDevice, stream[idStream]);
-    cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
-               cudaMemcpyHostToDevice, stream[idStream]);
+      kernelC<<<gridDim, blockDim, 0, stream[idStream]>>>(size, C_d[idStream], A_d[idStream]);
+      cudaMemcpyAsync(reinterpret_cast<void *>(C_d[idStream]), reinterpret_cast<void *>(C_h[idStream]), size,
+                 cudaMemcpyHostToDevice, stream[idStream]);
+
+      kernelD<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d[idStream], B_d[idStream]);
+      cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
+                 cudaMemcpyHostToDevice, stream[idStream]);
+      cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
+                 cudaMemcpyHostToDevice, stream[idStream]);
+      cudaStreamEndCapture(stream[idStream], &graph);
+      cudaGraphInstantiate(&instance, graph, NULL, NULL, 0);
+      graphCreated=true;
+    }
+    cudaGraphLaunch(instance, stream[idStream]);
   }
 
   cudaEventRecord(stop);
