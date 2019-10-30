@@ -73,11 +73,11 @@ int main(int argc, char *argv[]) {
 
   const int nStreams = 4;
 
-  // One graph per stream is required
+  // One cudaGraphExec_t per stream is required
+  cudaGraph_t graph;
   bool graphCreated[nStreams];
   for (int i = 0; i < nStreams; i++)
     graphCreated[i] = false;
-  cudaGraph_t graph[nStreams];
   cudaGraphExec_t instance[nStreams];
 
   // Declare host data
@@ -147,8 +147,8 @@ int main(int argc, char *argv[]) {
                  cudaMemcpyHostToDevice, stream[idStream]);
       cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
                  cudaMemcpyHostToDevice, stream[idStream]);
-      cudaStreamEndCapture(stream[idStream], &graph[idStream]); // end of the graph
-      cudaGraphInstantiate(&instance[idStream], graph[idStream], NULL, NULL, 0);
+      cudaStreamEndCapture(stream[idStream], &graph); // end of the graph
+      cudaGraphInstantiate(&instance[idStream], graph, NULL, NULL, 0);
       graphCreated[idStream]=true;
     }
     // Otherwise launch graph directly
