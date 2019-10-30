@@ -14,29 +14,49 @@ void init(uint64_t size, float *A, float *B, float *C) {
 __global__ void kernelA(int n, float *x, float *y) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
-  for (int i = index; i < n; i += stride)
-    y[i] = x[i] + y[i];
+  for (int i = index; i < n; i += stride) {
+    if (x[i] > y[i]) {
+      for (int j = 0; j < n/128; j++)
+        y[i] = x[j] + y[j];
+    }
+    else {
+      for (int j = 0; j < n/128; j++)
+        y[i] = x[j] / y[j];
+    }
+  }
 }
 
 __global__ void kernelB(int n, float *x, float *y) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
-  for (int i = index; i < n; i += stride)
-    y[i] = x[i] * 3.14f;
+  for (int i = index; i < n; i += stride) {
+    if (x[i] > y[i]) {
+      for (int j = 0; j < n/128; j++)
+        y[i] = x[j] + y[j];
+    }
+    else {
+      y[i] = atomicAdd(&y[i], x[i]);
+    }
+  }
 }
 
 __global__ void kernelC(int n, float *x, float *y) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
   for (int i = index; i < n; i += stride)
-    y[i] = logf(atanf(x[i]) / cosf(expf(x[i])));
+    if (x[i] > y[i]) {
+      for (int j = 0; j < n/128; j++)
+        y[i] = x[j] + y[j];
+    }
 }
 
 __global__ void kernelD(int n, float *x, float *y) {
   int index = blockIdx.x * blockDim.x + threadIdx.x;
   int stride = blockDim.x * gridDim.x;
-  for (int i = index; i < n; i += stride)
-    y[i] = log(x[i] / expf(y[i]));
+  for (int i = index; i < n; i += stride) {
+    for (int j = 0; j < n/128; j++)
+      y[i] = atomicAdd(&y[j], x[j]);
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -45,7 +65,7 @@ int main(int argc, char *argv[]) {
     cout << "\nArray size: " << argv[1] << endl;
     size = atoi(argv[1]);
   } else {
-    size = 1 << 24;
+    size = 1 << 16;
     cout << "\nUsing default matrix size: " << size << endl;
   }
 
@@ -125,6 +145,12 @@ int main(int argc, char *argv[]) {
   cudaEventElapsedTime(&milliseconds, start, stop);
   double seconds = static_cast<double>(milliseconds) / 1000.;
   cout << "runtime: " << seconds << endl;
+
+  for (size_t i = 0; i < nStreams; i++) {
+    cout << A_h[i][0] << endl;
+    cout << B_h[i][0] << endl;
+    cout << C_h[i][0] << endl;
+  }
   
   for (size_t i = 0; i < nStreams; i++)
     cudaStreamDestroy(stream[i]);
