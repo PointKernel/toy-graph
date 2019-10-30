@@ -73,9 +73,11 @@ int main(int argc, char *argv[]) {
 
   const int nStreams = 4;
 
-  bool graphCreated=false;
-  cudaGraph_t graph;
-  cudaGraphExec_t instance;
+  bool graphCreated[nStreams];
+  for (int i = 0; i < nStreams; i++)
+    graphCreated[i] = false;
+  cudaGraph_t graph[nStreams];
+  cudaGraphExec_t instance[nStreams];
 
   // declare host data
   float *A_h[nStreams];
@@ -122,7 +124,7 @@ int main(int argc, char *argv[]) {
   for (size_t i = 0; i < 1000; i++) {
     int idStream = i % nStreams;
 
-    if(!graphCreated){
+    if(!graphCreated[idStream]){
       cudaStreamBeginCapture(stream[idStream], cudaStreamCaptureModeGlobal);
       // copy host data to device
       cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
@@ -144,11 +146,11 @@ int main(int argc, char *argv[]) {
                  cudaMemcpyHostToDevice, stream[idStream]);
       cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
                  cudaMemcpyHostToDevice, stream[idStream]);
-      cudaStreamEndCapture(stream[idStream], &graph);
-      cudaGraphInstantiate(&instance, graph, NULL, NULL, 0);
-      graphCreated=true;
+      cudaStreamEndCapture(stream[idStream], &graph[idStream]);
+      cudaGraphInstantiate(&instance[idStream], graph[idStream], NULL, NULL, 0);
+      graphCreated[idStream]=true;
     }
-    cudaGraphLaunch(instance, stream[idStream]);
+    cudaGraphLaunch(instance[idStream], stream[idStream]);
   }
 
   cudaEventRecord(stop);
