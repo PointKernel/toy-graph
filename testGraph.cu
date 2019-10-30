@@ -73,13 +73,14 @@ int main(int argc, char *argv[]) {
 
   const int nStreams = 4;
 
+  // One graph per stream is required
   bool graphCreated[nStreams];
   for (int i = 0; i < nStreams; i++)
     graphCreated[i] = false;
   cudaGraph_t graph[nStreams];
   cudaGraphExec_t instance[nStreams];
 
-  // declare host data
+  // Declare host data
   float *A_h[nStreams];
   float *B_h[nStreams];
   float *C_h[nStreams];
@@ -90,7 +91,7 @@ int main(int argc, char *argv[]) {
     cudaMallocHost(reinterpret_cast<void **>(&C_h[i]), size * sizeof(float));
   }
 
-  // declare device data
+  // Declare device data
   float *A_d[nStreams];
   float *B_d[nStreams];
   float *C_d[nStreams];
@@ -100,11 +101,11 @@ int main(int argc, char *argv[]) {
     cudaMalloc(reinterpret_cast<void **>(&C_d[i]), size * sizeof(float));
   }
 
-  // initialize host data
+  // Initialize host data
   for (int i = 0; i < nStreams; i++)
     init(size, A_h[i], B_h[i], C_h[i]);
 
-  // create CUDA events for timing measurement
+  // Create CUDA events for timing measurement
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
@@ -124,9 +125,9 @@ int main(int argc, char *argv[]) {
   for (size_t i = 0; i < 1000; i++) {
     int idStream = i % nStreams;
 
+    // Create graph if not exits
     if(!graphCreated[idStream]){
-      cudaStreamBeginCapture(stream[idStream], cudaStreamCaptureModeGlobal);
-      // copy host data to device
+      cudaStreamBeginCapture(stream[idStream], cudaStreamCaptureModeGlobal);  // begin of the graph
       cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
                  cudaMemcpyHostToDevice, stream[idStream]);
       cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
@@ -146,32 +147,34 @@ int main(int argc, char *argv[]) {
                  cudaMemcpyHostToDevice, stream[idStream]);
       cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
                  cudaMemcpyHostToDevice, stream[idStream]);
-      cudaStreamEndCapture(stream[idStream], &graph[idStream]);
+      cudaStreamEndCapture(stream[idStream], &graph[idStream]); // end of the graph
       cudaGraphInstantiate(&instance[idStream], graph[idStream], NULL, NULL, 0);
       graphCreated[idStream]=true;
     }
+    // Otherwise launch graph directly
     cudaGraphLaunch(instance[idStream], stream[idStream]);
   }
 
   cudaEventRecord(stop);
 
-  // print kernel runtime
+  // Print total runtime
   cudaEventSynchronize(stop);
   float milliseconds = 0.f;
   cudaEventElapsedTime(&milliseconds, start, stop);
   double seconds = static_cast<double>(milliseconds) / 1000.;
   cout << "runtime: " << seconds << endl;
 
+  // Print to prevent the compiler from over optimization
   for (size_t i = 0; i < nStreams; i++) {
-    cout << A_h[i][0] << endl;
-    cout << B_h[i][0] << endl;
-    cout << C_h[i][0] << endl;
+    cout << A_h[i][CONST] << endl;
+    cout << B_h[i][CONST] << endl;
+    cout << C_h[i][CONST] << endl;
   }
   
   for (size_t i = 0; i < nStreams; i++)
     cudaStreamDestroy(stream[i]);
 
-  // free the allocated memory
+  // Free the allocated memory
   for (size_t i = 0; i < nStreams; i++) {
     cudaFreeHost(A_h[i]);
     cudaFreeHost(B_h[i]);
