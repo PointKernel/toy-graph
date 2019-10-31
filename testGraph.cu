@@ -75,9 +75,6 @@ int main(int argc, char *argv[]) {
 
   // One cudaGraphExec_t per stream is required
   cudaGraph_t graph;
-  bool graphCreated[nStreams];
-  for (int i = 0; i < nStreams; i++)
-    graphCreated[i] = false;
   cudaGraphExec_t instance[nStreams];
 
   // Declare host data
@@ -122,36 +119,40 @@ int main(int argc, char *argv[]) {
   
   cudaEventRecord(start);
 
+  // Create graph once
+  cudaStreamBeginCapture(stream[0], cudaStreamCaptureModeGlobal);  // begin of the graph
+  cudaMemcpyAsync(reinterpret_cast<void *>(A_d[0]), reinterpret_cast<void *>(A_h[0]), size,
+                  cudaMemcpyHostToDevice, stream[0]);
+  cudaMemcpyAsync(reinterpret_cast<void *>(B_d[0]), reinterpret_cast<void *>(B_h[0]), size,
+                  cudaMemcpyHostToDevice, stream[0]);
+  kernelA<<<gridDim, blockDim, 0, stream[0]>>>(size, A_d[0], B_d[0]);
+
+  cudaMemcpyAsync(reinterpret_cast<void *>(C_d[0]), reinterpret_cast<void *>(C_h[0]), size,
+                  cudaMemcpyHostToDevice, stream[0]);
+  kernelB<<<gridDim, blockDim, 0, stream[0]>>>(size, B_d[0], C_d[0]);
+
+  kernelC<<<gridDim, blockDim, 0, stream[0]>>>(size, C_d[0], A_d[0]);
+  cudaMemcpyAsync(reinterpret_cast<void *>(C_d[0]), reinterpret_cast<void *>(C_h[0]), size,
+                  cudaMemcpyHostToDevice, stream[0]);
+
+  kernelD<<<gridDim, blockDim, 0, stream[0]>>>(size, A_d[0], B_d[0]);
+  cudaMemcpyAsync(reinterpret_cast<void *>(A_d[0]), reinterpret_cast<void *>(A_h[0]), size,
+                  cudaMemcpyHostToDevice, stream[0]);
+  cudaMemcpyAsync(reinterpret_cast<void *>(B_d[0]), reinterpret_cast<void *>(B_h[0]), size,
+                  cudaMemcpyHostToDevice, stream[0]);
+  cudaStreamEndCapture(stream[0], &graph); // end of the graph
+  // create an instance per stream
+  for(int i=0; i < nStreams; ++i) {
+    cudaGraphInstantiate(&instance[i], graph, NULL, NULL, 0);
+  }
+
   for (size_t i = 0; i < 1000; i++) {
     int idStream = i % nStreams;
 
-    // Create graph if not exits
-    if(!graphCreated[idStream]){
-      cudaStreamBeginCapture(stream[idStream], cudaStreamCaptureModeGlobal);  // begin of the graph
-      cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
-                 cudaMemcpyHostToDevice, stream[idStream]);
-      cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
-                 cudaMemcpyHostToDevice, stream[idStream]);
-      kernelA<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d[idStream], B_d[idStream]);
+    // How to use A_d[idStream], A_h[idStream], B_d[idStream], B_h[idStream], C_d[idStream], C_h[idstream]?
+    // As of now the kernels and transfers are full of data races...
 
-      cudaMemcpyAsync(reinterpret_cast<void *>(C_d[idStream]), reinterpret_cast<void *>(C_h[idStream]), size,
-                 cudaMemcpyHostToDevice, stream[idStream]);
-      kernelB<<<gridDim, blockDim, 0, stream[idStream]>>>(size, B_d[idStream], C_d[idStream]);
-
-      kernelC<<<gridDim, blockDim, 0, stream[idStream]>>>(size, C_d[idStream], A_d[idStream]);
-      cudaMemcpyAsync(reinterpret_cast<void *>(C_d[idStream]), reinterpret_cast<void *>(C_h[idStream]), size,
-                 cudaMemcpyHostToDevice, stream[idStream]);
-
-      kernelD<<<gridDim, blockDim, 0, stream[idStream]>>>(size, A_d[idStream], B_d[idStream]);
-      cudaMemcpyAsync(reinterpret_cast<void *>(A_d[idStream]), reinterpret_cast<void *>(A_h[idStream]), size,
-                 cudaMemcpyHostToDevice, stream[idStream]);
-      cudaMemcpyAsync(reinterpret_cast<void *>(B_d[idStream]), reinterpret_cast<void *>(B_h[idStream]), size,
-                 cudaMemcpyHostToDevice, stream[idStream]);
-      cudaStreamEndCapture(stream[idStream], &graph); // end of the graph
-      cudaGraphInstantiate(&instance[idStream], graph, NULL, NULL, 0);
-      graphCreated[idStream]=true;
-    }
-    // Otherwise launch graph directly
+    // Launch graph
     cudaGraphLaunch(instance[idStream], stream[idStream]);
   }
 
