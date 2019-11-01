@@ -9,6 +9,12 @@ make
 ```
 
 ## Run
+mini-app to fake the real case workflow:
 ```bash
-./testGraph [array-szie] (16777216 by default)
+./testGraph [array-szie] (65536 by default)
+```
+
+simple case to change graph parameters:
+```bash
+./setParams
 ```

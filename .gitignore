@@ -2,5 +2,7 @@
 *.swp
 
 *.nvvp
+*.nsight-cuprof-report
 
 testGraph
+setParams
