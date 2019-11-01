@@ -24,10 +24,10 @@ __global__ void kernel(float *array) {
     array[index] += 1.f;
 }
 
-int main(int argc, char *argv[]) {
+int main() {
   // Host array
   float *A_h;
-  cudaMallocHost(reinterpret_cast<void **>(&A_h), SIZE * sizeof(float));
+  checkCudaErrors(cudaMallocHost(reinterpret_cast<void **>(&A_h), SIZE * sizeof(float)));
 
   // Device array
   float *A_d;
