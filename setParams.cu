@@ -3,7 +3,9 @@
 
 #include <iostream>
 
-const int SIZE = 32;
+using namespace std;
+
+const int SIZE = 8;
 
 void init(float *A) {
   for (size_t i = 0; i < SIZE; i++) {
@@ -13,9 +15,9 @@ void init(float *A) {
 
 void print(float *A) {
   for (size_t i = 0; i < SIZE; i++) {
-    std::cout << A[i] << " ";
+    cout << A[i] << " ";
   }
-  std::cout << "\n";
+  cout << "\n\n";
 }
 
 __global__ void kernel(float *array) {
@@ -34,7 +36,7 @@ int main() {
   cudaMalloc(reinterpret_cast<void **>(&A_d), SIZE * sizeof(float));
 
   init(A_h);
-  std::cout << "results after init:\n";
+  cout << "Results after init:\n";
   print(A_h);
 
   cudaStream_t stream;
@@ -48,7 +50,7 @@ int main() {
 
   cudaMemcpyAsync(reinterpret_cast<void *>(A_d), reinterpret_cast<void *>(A_h),
                   SIZE * sizeof(float), cudaMemcpyHostToDevice, stream);
-  kernel<<<1, 32, 0, stream>>>(A_d);
+  kernel<<<1, SIZE, 0, stream>>>(A_d);
   cudaMemcpyAsync(reinterpret_cast<void *>(A_h), reinterpret_cast<void *>(A_d),
                   SIZE * sizeof(float), cudaMemcpyDeviceToHost, stream);
 
@@ -57,16 +59,39 @@ int main() {
   checkCudaErrors(cudaGraphInstantiate(&instance, graph, NULL, NULL, 0));
   checkCudaErrors(cudaGraphLaunch(instance, stream));
 
-  std::cout << "results from kernel:\n";
+  cout << "Results from kernel:\n";
   print(A_h);
 
-  // size_t numP, numQ;
-  // cudaGraphGetNodes(graphP, NULL, &numP);
-  // cudaGraphGetNodes(graphQ, NULL, &numQ);
+  size_t nNodes;
+  // Get the number of graph nodes first
+  cudaGraphGetNodes(graph, NULL, &nNodes);
+  cout << "Number of nodes in graph: " << nNodes << "\n";
+  // Then get the nodes
+  cudaGraphNode_t nodes[nNodes];
+  cudaGraphGetNodes(graph, nodes, &nNodes);
 
-  // cudaGraphNode_t nodesP[numP], nodesQ[numQ];
-  // cudaGraphGetNodes(graphP, nodesP, &numP);
-  // cudaGraphGetNodes(graphQ, nodesQ, &numQ);
+  // Get memcpy node parameters
+  // https://docs.nvidia.com/cuda/cuda-runtime-api/structcudaMemcpy3DParms.html#structcudaMemcpy3DParms
+  cudaMemcpy3DParms params;
+  cudaGraphMemcpyNodeGetParams(nodes[0], &params);
+
+  // Print the memcpy kind
+  // cudaMemcpyHostToHost = 0
+  // cudaMemcpyHostToDevice = 1
+  // cudaMemcpyDeviceToHost = 2
+  // cudaMemcpyDeviceToDevice = 3
+  // cudaMemcpyDefault = 4
+  cout << "kind: " << params.kind << "\n";
+
+  cout << "depth: " << params.extent.depth << "\t";
+  cout << "height: " << params.extent.height << "\t";
+  cout << "width: " << params.extent.width << "\n";
+  
+  cout << "A_h: " << A_h << "\t";
+  cout << params.srcPtr.ptr << "\n";
+
+  cout << "A_d: " << A_d << "\t";
+  cout << params.dstPtr.ptr << "\n";
 
   // cudaKernelNodeParams knp;
   // cudaGraphKernelNodeGetParams(nodesQ[0], &knp);
