@@ -35,7 +35,8 @@ int main() {
 
   // Host array
   float *A_h;
-  checkCudaErrors(cudaMallocHost(reinterpret_cast<void **>(&A_h), size * sizeof(float)));
+  checkCudaErrors(
+      cudaMallocHost(reinterpret_cast<void **>(&A_h), size * sizeof(float)));
 
   // Device array
   float *dArray;
@@ -54,11 +55,13 @@ int main() {
   // Create graph
   cudaStreamBeginCapture(stream, cudaStreamCaptureModeGlobal);
 
-  cudaMemcpyAsync(reinterpret_cast<void *>(dArray), reinterpret_cast<void *>(A_h),
-                  size * sizeof(float), cudaMemcpyHostToDevice, stream);
+  cudaMemcpyAsync(reinterpret_cast<void *>(dArray),
+                  reinterpret_cast<void *>(A_h), size * sizeof(float),
+                  cudaMemcpyHostToDevice, stream);
   kernel<<<1, 32, 0, stream>>>(dArray, size);
-  cudaMemcpyAsync(reinterpret_cast<void *>(A_h), reinterpret_cast<void *>(dArray),
-                  size * sizeof(float), cudaMemcpyDeviceToHost, stream);
+  cudaMemcpyAsync(reinterpret_cast<void *>(A_h),
+                  reinterpret_cast<void *>(dArray), size * sizeof(float),
+                  cudaMemcpyDeviceToHost, stream);
 
   cudaStreamEndCapture(stream, &graph);
 
@@ -71,7 +74,8 @@ int main() {
 
   // New data: host array
   float *B_h;
-  checkCudaErrors(cudaMallocHost(reinterpret_cast<void **>(&B_h), size * sizeof(float)));
+  checkCudaErrors(
+      cudaMallocHost(reinterpret_cast<void **>(&B_h), size * sizeof(float)));
   cudaMalloc(reinterpret_cast<void **>(&dArray), size * sizeof(float));
   for (int i = 0; i < size; i++)
     B_h[i] = 1.f;
@@ -104,7 +108,7 @@ int main() {
   cout << "1st:  depth: " << dparams.extent.depth << "\t";
   cout << "height: " << dparams.extent.height << "\t";
   cout << "width: " << dparams.extent.width << "\n";
-  
+
   dparams.srcPtr.ptr = B_h;
   dparams.dstPtr.ptr = dArray;
   dparams.extent.width = size * sizeof(float);
@@ -122,6 +126,17 @@ int main() {
 
   // Update nodes[1] kernel parameter: cudaKernelNodeParams
   // https://docs.nvidia.com/cuda/cuda-runtime-api/structcudaKernelNodeParams.html#structcudaKernelNodeParams
+  //
+  // Kernel parameters can also be packaged by the application into a single
+  // buffer that is passed in via the extra parameter. This places the burden on
+  // the application of knowing each kernel parameter's size and
+  // alignment/padding within the buffer. Here is an example of using the extra
+  // parameter in this manner:
+  //  void *config[] = {
+  //    CU_LAUNCH_PARAM_BUFFER_POINTER, argBuffer,
+  //    CU_LAUNCH_PARAM_BUFFER_SIZE,    &argBufferSize,
+  //    CU_LAUNCH_PARAM_END
+  //  };
   cout << "\n######################## Update node 1\n";
   cudaKernelNodeParams kparams;
   cudaGraphKernelNodeGetParams(nodes[1], &kparams);
@@ -132,13 +147,13 @@ int main() {
   cout << "2nd:  blockDim.x: " << kparams.blockDim.x << "\t";
   cout << "blockDim.y: " << kparams.blockDim.y << "\t";
   cout << "blockDim.z: " << kparams.blockDim.z << "\n";
-  
+
   cudaGraphKernelNodeSetParams(nodes[1], &kparams);
 
   // Update nodes[2] device2host memcpy parameter
   cout << "\n######################## Update node 2\n";
   cudaGraphMemcpyNodeGetParams(nodes[2], &dparams);
- 
+
   dparams.srcPtr.ptr = dArray;
   dparams.dstPtr.ptr = B_h;
   dparams.extent.width = size * sizeof(float);

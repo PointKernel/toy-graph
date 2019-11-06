@@ -83,9 +83,12 @@ int main(int argc, char *argv[]) {
   float *C_h[nStreams];
 
   for (int i = 0; i < nStreams; i++) {
-    checkCudaErrors(cudaMallocHost(reinterpret_cast<void **>(&A_h[i]), size * sizeof(float)));
-    checkCudaErrors(cudaMallocHost(reinterpret_cast<void **>(&B_h[i]), size * sizeof(float)));
-    checkCudaErrors(cudaMallocHost(reinterpret_cast<void **>(&C_h[i]), size * sizeof(float)));
+    checkCudaErrors(cudaMallocHost(reinterpret_cast<void **>(&A_h[i]),
+                                   size * sizeof(float)));
+    checkCudaErrors(cudaMallocHost(reinterpret_cast<void **>(&B_h[i]),
+                                   size * sizeof(float)));
+    checkCudaErrors(cudaMallocHost(reinterpret_cast<void **>(&C_h[i]),
+                                   size * sizeof(float)));
   }
 
   // Declare device data
