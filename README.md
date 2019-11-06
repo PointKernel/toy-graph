@@ -14,7 +14,12 @@ mini-app to fake the real case workflow:
 ./testGraph [array-szie] (65536 by default)
 ```
 
-simple case to change graph parameters:
+update graph parameters by using APIs:
 ```bash
-./setParams
+./setParamsAPI
+```
+
+update graph parameters by using pointer-of-pointer:
+```bash
+./setParamsWrapper
 ```
