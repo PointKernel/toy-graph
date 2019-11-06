@@ -5,4 +5,5 @@
 *.nsight-cuprof-report
 
 testGraph
-setParams
+setParamsAPI
+setParamsWrapper
