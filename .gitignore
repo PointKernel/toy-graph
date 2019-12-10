@@ -6,4 +6,5 @@
 
 testGraph
 setParamsAPI
+setParamsNaive
 setParamsWrapper
