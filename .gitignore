@@ -5,6 +5,7 @@
 *.nsight-cuprof-report
 
 testGraph
+cmpRuntime
 setParamsAPI
 setParamsNaive
 setParamsWrapper

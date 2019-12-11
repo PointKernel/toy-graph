@@ -14,6 +14,11 @@ mini-app to fake the real case workflow:
 ./testGraph [array-szie] (65536 by default)
 ```
 
+graph & kernels runtime comparison:
+```bash
+./cmpRuntime
+```
+
 update graph parameters by directly setting parameters:
 ```bash
 ./setParamsNaive
